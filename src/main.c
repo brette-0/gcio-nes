@@ -5,6 +5,7 @@
 
 volatile uint64_t raw;
 volatile uint64_t capture;
+volatile union inputs_t inputs;
 volatile uint64_t flip;
 volatile uint64_t mask;
 
@@ -50,6 +51,19 @@ inline void console_read(void){
     if (latch){
         switch (task){
             case REPORT:
+                inputs.hunk ^= flip;
+
+                uint16_t* vec = GetCStick();
+
+                if (behavior & L_TO_C){
+                    if (!*vec) *vec = *GetLStick();
+                } else if (behavior & C_TO_L){
+                    vec = GetLStick();
+                    if (!*vec) *vec = *GetCStick();
+                }
+
+                // pre calc needs Atan2 table
+                // TODO: do precalc and D_TO_L and D_TO_C
                 break;
 
             case BEHAVE:
@@ -58,6 +72,7 @@ inline void console_read(void){
             
             case INMASK:
                 mask |= (__PD2 << nTask);
+                nInupts += __PD2;
                 break;
 
             case INVERT:
@@ -92,6 +107,10 @@ inline void console_write(void){
         else {
             latch = 1;
             switch (task) {
+                case REPORT:
+                    nTask = nInupts;
+                    break;
+
                 case BEHAVE:
                     behavior = 0;
                     nTask = 8;
@@ -102,7 +121,8 @@ inline void console_write(void){
                     goto wide;
 
                 case INMASK:
-                    mask = 0;
+                    mask    = 0;
+                    nInupts = 0;
                     goto wide;
 
                 default:

@@ -1,0 +1,13 @@
+{
+    "[makefile]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 4,
+        "editor.autoClosingBrackets": "never",
+        "editor.autoClosingQuotes": "never",
+        "editor.suggest.showSnippets": false,
+        "files.encoding": "utf8"
+    },
+    "files.associations": {
+        "Makefile": "makefile"
+    }
+}

@@ -3,6 +3,22 @@
 
 #include "main.h"
 
+volatile uint64_t raw;
+volatile uint64_t capture;
+volatile uint64_t flip;
+volatile uint64_t mask;
+
+volatile uint8_t  behavior;
+volatile uint8_t  nInupts;
+
+volatile uint8_t  shift;
+volatile uint8_t  latch;
+
+volatile uint8_t  task;
+volatile uint8_t  nTask;
+
+volatile uint8_t  __PD2;
+
 int main(void){
     init();
     sei();
@@ -14,8 +30,8 @@ int main(void){
 
 
 inline void init(void){
-    DDRC  |= (1 << PC0);
-    PORTC |= (1 << PC0);
+    DDRC  |=  (1 << PC0);
+    PORTC |=  (1 << PC0);
 
     DDRD  &= ~(1 << PD2);
     PORTD |=  (1 << PD2);
@@ -26,14 +42,18 @@ inline void init(void){
     EICRA &= ~(1 << ISC01);
     EICRA |=  (1 << ISC00);
 
-    EICRA |= (1 << ISC11) | (1 << ISC10);
-    EIMSK |= (1 << INT0)  | (1 << INT1);
+    EICRA |=  (1 << ISC11) | (1 << ISC10);
+    EIMSK |=  (1 << INT0)  | (1 << INT1);
 }
 
 inline void console_read(void){
     if (latch){
         switch (task){
             case REPORT:
+                break;
+
+            case BEHAVE:
+                behavior |= (__PD2 << nTask);
                 break;
             
             case INMASK:
@@ -55,7 +75,8 @@ inline void console_read(void){
         latch = 0;
         task  = LEGACY;
     } else if (__PD2){
-        task = ++task % (LSETUP + 1);
+        ++task;
+        task = task % (LSETUP + 1);
     } else /* legacy */ {
         if (shift & (1ull << (64 - nTask))) PORTC |=  (1 << PC0);
         else                                PORTC &= ~(1 << PC0);
@@ -70,7 +91,12 @@ inline void console_write(void){
         if (task == LEGACY) shift = 0; 
         else {
             latch = 1;
-            switch (task){
+            switch (task) {
+                case BEHAVE:
+                    behavior = 0;
+                    nTask = 8;
+                    break;
+
                 case INVERT:
                     flip = 0;
                     goto wide;

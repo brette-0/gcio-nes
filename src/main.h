@@ -26,11 +26,12 @@ void console_write(void);
 
 ISR(INT0_vect) { console_write(); }
 
-ISR(INT1_vect) { console_read(); }
+ISR(INT1_vect) { console_read();  }
 
 enum ETasks {
     LEGACY,
     REPORT,
+    BEHAVE,
     INMASK,
     INVERT,
     RUMBLE,

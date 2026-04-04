@@ -1,4 +1,5 @@
 #ifndef  MAIN_H
+#define  MAIN_H
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -18,11 +19,9 @@ extern volatile uint8_t  nTask;
 
 extern volatile uint8_t  __PD2;
 
-int main(void);
-
-inline void init_latch_interrupt(void);
-inline void console_read(void);
-inline void console_write(void);
+void init(void);
+void console_read(void);
+void console_write(void);
 
 
 ISR(INT0_vect) { console_write(); }

@@ -42,6 +42,7 @@ enum ETasks {
     INMASK,
     INVERT,
     RUMBLE,
+    DEZONE,
     LSETUP
 };
 
@@ -54,11 +55,11 @@ enum EBehaviors {
     C_PREC
 };
 
-inline uint16_t* GetLStick() {
+inline vec2* GetLStick() {
     return inputs.arr[3];
 }
 
-inline uint16_t* GetCStick() {
+inline vec2* GetCStick() {
     return inputs.arr[5];
 }
 
@@ -74,6 +75,10 @@ inline volatile uint8_t GetTrigger(const volatile uint8_t i){
 
 inline volatile uint8_t GetButton(const volatile uint8_t i){
     return inputs.arr[i > 7] & (1 << (i - (i > 7 ? 8 : 0)));
+}
+
+inline volatile uint8_t GetDPad(){
+    return inputs.arr[0] & 0xf0;
 }
 
 

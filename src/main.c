@@ -1,6 +1,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+#include "types.h"
+#include "tables.h"
 #include "main.h"
 
 volatile uint64_t raw;
@@ -53,17 +55,72 @@ inline void console_read(void){
             case REPORT:
                 inputs.hunk ^= flip;
 
-                uint16_t* vec = GetCStick();
-
-                if (behavior & L_TO_C){
-                    if (!*vec) *vec = *GetLStick();
+                if (behavior & L_TO_C) {
+                    if (!*(volatile uint16_t*)GetCStick()) *GetCStick() = *GetLStick();
                 } else if (behavior & C_TO_L){
-                    vec = GetLStick();
-                    if (!*vec) *vec = *GetCStick();
+                    if (!*(volatile uint16_t*)GetLStick()) *GetLStick() = *GetCStick();
                 }
 
-                // pre calc needs Atan2 table
-                // TODO: do precalc and D_TO_L and D_TO_C
+                if (behavior & L_PREC) {
+                    CalculateStick(GetLStick());
+                    if (behavior & D_TO_L){
+                        if (!GetLStick()->y) {
+                            switch (GetDPad()){
+                                case 0b11000000:    // just opposing LR
+                                case 0b00110000:    // just opposing UD
+                                case 0b11110000:    // all opposing input
+                                case 0b00000000:    // no d pad input    
+                                    break;
+
+                                case 0b00010000:    // up only
+                                    GetLStick()->x = 0x00;
+                                    GetCStick()->y = 0xff;
+                                    break;
+                                
+                                case 0b00100000:    // down only
+                                    GetLStick()->x = 0x80;
+                                    GetCStick()->y = 0xff;
+                                    break;
+                                
+                                case 0b10000000:    // right only
+                                    GetLStick()->x = 0x40;
+                                    GetCStick()->y = 0xff;
+                                    break;    
+                                
+                                case 0b01000000:    // left only
+                                    GetLStick()->x = 0xc0;
+                                    GetCStick()->y = 0xff;
+                                    break;    
+                                
+                                case 0b10010000:    // up and right
+                                    GetLStick()->x = 0x20;
+                                    GetCStick()->y = 0xb5;
+                                    break;
+
+                                case 0b10100000:    // down and right
+                                    GetLStick()->x = 0x60;
+                                    GetCStick()->y = 0xb5;
+                                    break;
+
+                                case 0b01010000:    // up and left
+                                    GetLStick()->x = 0xe0;
+                                    GetCStick()->y = 0xb5;
+                                    break;
+
+                                case 0b01100000:    // down and left
+                                    GetLStick()->x = 0xa0;
+                                    GetCStick()->y = 0xb5;
+                                    break;
+                            }
+                        }
+                    }
+                }
+                if (behavior & C_PREC){
+                    if (behavior & L_TO_C) *GetCStick() = *GetLStick();
+                    else                    CalculateStick(GetCStick());
+                }
+
+                // TODO: do D_TO_L and D_TO_C
                 break;
 
             case BEHAVE:
@@ -89,7 +146,7 @@ inline void console_read(void){
         if (--nTask) return;
         latch = 0;
         task  = LEGACY;
-    } else if (__PD2){
+    } else if (__PD2) {
         ++task;
         task = task % (LSETUP + 1);
     } else /* legacy */ {

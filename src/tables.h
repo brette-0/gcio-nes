@@ -1,3 +1,5 @@
+#ifndef TYPES_H
+#define TYPES_H
 #include <avr/io.h>>
 #include "types.h"
 
@@ -10,10 +12,14 @@ static volatile const uint8_t atan_table[128] = {
 };
 
 void CalculateStick(vec2* pStick){
-    pStick->x = sqrt(
+    static volatile vec2 temp;
+    temp.y = sqrt(
         square_table[pStick->x] +
         square_table[pStick->y]
     );
+
+    temp.x = fast_atan2(pStick);
+    pStick = &temp;
 }
 
 volatile uint8_t sqrt(uint16_t n) {
@@ -58,3 +64,4 @@ volatile uint8_t fast_atan2(vec2* pStick) {
 
     return base;
 }
+#endif

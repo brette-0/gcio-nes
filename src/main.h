@@ -14,10 +14,7 @@ void init(void);
 void console_read(void);
 void console_write(void);
 
-typedef struct {
-    uint8_t x;
-    uint8_t y;
-} vec2;
+
 
 #define B       0
 #define Y       1

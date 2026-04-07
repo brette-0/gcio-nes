@@ -1,5 +1,10 @@
+#ifndef SIMULATION
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#else
+#include "../sim/sim_hal.h"
+#endif
+
 
 #include "types.h"
 #include "tables.h"
@@ -21,6 +26,7 @@ volatile uint8_t  nTask;
 
 volatile uint8_t  OUT;
 
+#ifndef SIMULATION
 int main(void){
     init();
     sei();
@@ -29,6 +35,7 @@ int main(void){
         // main loop
     }
 }
+#endif
 
 
 void init(void){
@@ -107,7 +114,10 @@ void console_read(void){
     } else /* legacy */ {
         if (READ_SR(shift)) PORTA.OUTSET = __D0;
         else                PORTA.OUTCLR = __D0;
-        if (--nTask == 0) nTask = 64;
+        if (--nTask == 0) {
+            nTask = 64;
+            RESET_SR(shift);
+        }
     }
 
 }
@@ -127,9 +137,6 @@ void console_write(){
                     nTask = 8;
                     break;
 
-                case INVERT:
-                    goto wide;
-
                 case INMASK:
                     nInupts = 0;
                     goto wide;
@@ -138,10 +145,34 @@ void console_write(){
                     nTask = 0;  // TODO: work
                     break;
 
+                case INVERT:
                 wide:
                     nTask = 64;
                     break;
             }
         }
     }
+}
+
+void PadToStick(vec2* pStick){
+    uint8_t temp;
+    if (pStick == L_STICK)
+        temp = behavior & L_PREC;
+    else
+        temp = behavior & C_PREC;
+    
+    // crude solution, will need some change when deadzone is in use.
+    if (!!temp && pStick->y)                return;
+    else if ((*(uint16_t*)pStick)) return;
+
+    // dpad to vector
+    temp = D_PAD;
+    pStick->x  = temp & 0x40 ? 0x80 : 0;
+    pStick->x += temp & 0x80 ? 0x7f : 0;
+    pStick->y  = temp & 0x10 ? 0x80 : 0;
+    pStick->y += temp & 0x20 ? 0x7f : 0;
+
+    temp &= 1;
+    if (!temp) return;
+    CalculateStick(pStick);    
 }

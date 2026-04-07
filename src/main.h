@@ -1,8 +1,11 @@
 #ifndef  MAIN_H
 #define  MAIN_H
+#ifndef SIMULATION
 #include <avr/io.h>
 #include <avr/interrupt.h>
-
+#else
+#include "../sim/sim_hal.h"
+#endif
 #include "types.h"
 #include "tables.h"
 
@@ -37,7 +40,9 @@ void console_write(void);
 #define C       12
 
 
+#ifndef SIMULATION
 ISR(PORTA_PORT_vect) { handle_interrupt(); }
+#endif
 
 enum ETasks {
     LEGACY,
@@ -64,28 +69,7 @@ enum EBehaviors {
 #define C_STICK (vec2*)&inputs.arr[4]
 #define D_PAD (inputs.arr[0] & 0x40)
 
-void PadToStick(vec2* pStick){
-    uint8_t temp;
-    if (pStick == L_STICK)
-        temp = behavior & L_PREC;
-    else
-        temp = behavior & C_PREC;
-    
-    // crude solution, will need some change when deadzone is in use.
-    if (!!temp && pStick->y)                return;
-    else if ((*(uint16_t*)pStick)) return;
-
-    // dpad to vector
-    temp = D_PAD;
-    pStick->x  = temp & 0x40 ? 0x80 : 0;
-    pStick->x += temp & 0x80 ? 0x7f : 0;
-    pStick->y  = temp & 0x10 ? 0x80 : 0;
-    pStick->y += temp & 0x20 ? 0x7f : 0;
-
-    temp &= 1;
-    if (!temp) return;
-    CalculateStick(pStick);    
-}
+void PadToStick(vec2* pStick);
 
 
 #endif

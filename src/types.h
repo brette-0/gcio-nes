@@ -1,6 +1,6 @@
 #ifndef TYPES_H
 #define TYPES_H
-#include <avr/io.h>
+#include <stdint.h>
 
 typedef union wide_t {
     uint64_t hunk;
@@ -29,7 +29,8 @@ typedef struct {
     for (uint8_t i = 0; i < 8; i++) \
         l.arr[i] ^= r.arr[i];
 
-#define W_MASK_BIT(wide, bit)                   \
-    wide.arr[bit >> 3] |= (1 << (bit & 0b111))
+#define W_MASK_BIT(wide, bit)                       \
+    wide.arr[bit >> 3] &= ~(1 << (bit & 0b111));    \
+    wide.arr[bit >> 3] |=  (1 << (bit & 0b111))
 
 #endif

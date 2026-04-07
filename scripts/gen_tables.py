@@ -3,7 +3,6 @@ import math
 def __main__():
     gen_square_table()
     gen_atan_table()
-    gen_reciprocal_table()
     return
 
 def gen_square_table():

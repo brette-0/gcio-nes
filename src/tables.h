@@ -1,6 +1,5 @@
 #ifndef TABLES_H
 #define TABLES_H
-#include <avr/io.h>
 #include "types.h"
 
 void CalculateStick(vec2* pStick);

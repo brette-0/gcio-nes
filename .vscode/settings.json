@@ -9,5 +9,6 @@
     },
     "files.associations": {
         "Makefile": "makefile"
-    }
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }

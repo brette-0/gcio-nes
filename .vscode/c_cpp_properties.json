@@ -8,13 +8,20 @@
                 "/home/brette/avr8-gnu-toolchain-linux_x86_64/avr/include",
                 "/home/brette/attiny_dfp/include"
             ],
-                "defines": [
+            "defines": [
                 "__AVR_ATtiny202__",
+                "__AVR_DEV_LIB_NAME__=tn202",
                 "F_CPU=20000000UL"
             ],
-            "compilerPath": "${env:HOME}/avr8-gnu-toolchain-linux_x86_64/bin/avr-gcc",
+            "compilerPath": "/home/brette/avr8-gnu-toolchain-linux_x86_64/bin/avr-gcc",
+            "compilerArgs": [
+                "-mmcu=attiny202",
+                "-B/home/brette/attiny_dfp/gcc/dev/attiny202/",
+                "-isystem",
+                "/home/brette/attiny_dfp/include"
+            ],
             "cStandard": "c11",
-            "intelliSenseMode": "linux-gcc-arm"
+            "intelliSenseMode": "linux-gcc-x64"
         }
     ],
     "version": 4

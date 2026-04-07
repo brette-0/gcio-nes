@@ -1,21 +1,19 @@
-#include <avr/iotn202.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
 #include "types.h"
 #include "tables.h"
 #include "main.h"
-
-volatile uint64_t raw;
-volatile uint64_t capture;
-volatile union inputs_t inputs;
-volatile uint64_t flip;
-volatile uint64_t mask;
+volatile wide_t raw;
+volatile wide_t capture;
+volatile wide_t inputs;
+volatile wide_t flip;
+volatile wide_t mask;
 
 volatile uint8_t  behavior;
 volatile uint8_t  nInupts;
 
-volatile uint8_t  shift;
+volatile shift_register shift;
 volatile uint8_t  latch;
 
 volatile uint8_t  task;
@@ -33,13 +31,13 @@ int main(void){
 }
 
 
-inline void init(void){
+void init(void){
     PORTA.PIN1CTRL = PORT_PULLUPEN_bm | PORT_ISC_BOTHEDGES_gc;
     PORTA.DIRCLR = (1 << 3);
     PORTA.PIN3CTRL = PORT_PULLUPEN_bm | PORT_ISC_RISING_gc;
 }
 
-inline void handle_interrupt(void){
+void handle_interrupt(void){
     HANDLE(__OUT) {
         OUT = PORTA.IN & __OUT;
         console_write();
@@ -50,32 +48,32 @@ inline void handle_interrupt(void){
     }
 }
 
-inline void console_read(void){
+void console_read(void){
     if (latch){
         switch (task){
             case REPORT:
-                inputs.hunk ^= flip;
+                W_FLIP(inputs, flip)
 
                 if (behavior & L_TO_C) {
-                    if (!*(volatile uint16_t*)GetCStick()) *GetCStick() = *GetLStick();
+                    if (!*(volatile uint16_t*)C_STICK) *C_STICK = *L_STICK;
                 } else if (behavior & C_TO_L){
-                    if (!*(volatile uint16_t*)GetLStick()) *GetLStick() = *GetCStick();
+                    if (!*(volatile uint16_t*)L_STICK) *L_STICK = *C_STICK;
                 }
 
                 if (behavior & L_PREC) {
-                    CalculateStick(GetLStick());
+                    CalculateStick(L_STICK);
                 }
                 if (behavior & C_PREC){
-                    if (behavior & L_TO_C) *GetCStick() = *GetLStick();
-                    else                    CalculateStick(GetCStick());
+                    if (behavior & L_TO_C) *L_STICK = *C_STICK;
+                    else                    CalculateStick(C_STICK);
                 }
                 
                 if (behavior & D_TO_L){
-                    PadToStick(GetLStick());
+                    PadToStick(L_STICK);
                 }
 
                 if (behavior & D_TO_C){
-                    PadToStick(GetCStick());
+                    PadToStick(C_STICK);
                 }
                 
                 break;
@@ -85,12 +83,12 @@ inline void console_read(void){
                 break;
             
             case INMASK:
-                mask |= (OUT << nTask);
+                W_MASK_BIT(mask, (OUT << nTask));
                 nInupts += OUT;
                 break;
 
             case INVERT:
-                flip |= (OUT << nTask);
+                W_MASK_BIT(flip, (OUT << nTask));
                 break;
 
             case RUMBLE:
@@ -105,18 +103,18 @@ inline void console_read(void){
         task  = LEGACY;
     } else if (OUT) {
         ++task;
-        task = task % (LSETUP + 1);
+        if (task > LSETUP) task = LEGACY;
     } else /* legacy */ {
-        if (shift & (1ull << (64 - nTask))) PORTA.OUTSET = __D0;
-        else                                PORTA.OUTCLR = __D0;
+        if (READ_SR(shift)) PORTA.OUTSET = __D0;
+        else                PORTA.OUTCLR = __D0;
         if (--nTask == 0) nTask = 64;
     }
 
 }
 
-inline void console_write(void){
+void console_write(){
     if (!OUT){
-        if (task == LEGACY) shift = 0; 
+        if (task == LEGACY) RESET_SR(shift); 
         else {
             latch = 1;
             switch (task) {
@@ -130,11 +128,9 @@ inline void console_write(void){
                     break;
 
                 case INVERT:
-                    flip = 0;
                     goto wide;
 
                 case INMASK:
-                    mask    = 0;
                     nInupts = 0;
                     goto wide;
 

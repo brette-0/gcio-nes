@@ -1,5 +1,5 @@
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef TABLES_H
+#define TABLES_H
 #include <avr/io.h>>
 #include "types.h"
 

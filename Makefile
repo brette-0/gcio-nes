@@ -1,4 +1,4 @@
-MCU = atmega168
+MCU = attiny202
 F_CPU = 20000000UL
 CC = avr-gcc
 CFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -Wall -std=c11 -I src

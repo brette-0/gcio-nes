@@ -4,13 +4,15 @@
             "name": "AVR",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/usr/lib/avr/include"
+                "${workspaceFolder}/src",
+                "/home/brette/avr8-gnu-toolchain-linux_x86_64/avr/include",
+                "/home/brette/attiny_dfp/include"
             ],
-            "defines": [
-                "__AVR_ATmega168__",
+                "defines": [
+                "__AVR_ATtiny202__",
                 "F_CPU=20000000UL"
             ],
-            "compilerPath": "/usr/bin/avr-gcc",
+            "compilerPath": "${env:HOME}/avr8-gnu-toolchain-linux_x86_64/bin/avr-gcc",
             "cStandard": "c11",
             "intelliSenseMode": "linux-gcc-arm"
         }

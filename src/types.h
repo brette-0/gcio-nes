@@ -17,20 +17,20 @@ typedef struct {
     uint8_t shift;
 } shift_register;
 
-#define SHIFT(reg) ++reg.shift
-#define READ_SR(reg) (                  \
-    reg.content.arr[reg.shift >> 3] &   \
-    (1 << reg.shift & 0b111)            \
+#define SHIFT(reg) ++(reg).shift
+#define READ_SR(reg) (                      \
+    (reg).content.arr[(reg).shift >> 3] &   \
+    (1 << ((reg).shift & 0b111))            \
 )
 
-#define RESET_SR(reg) reg.shift = 0
+#define RESET_SR(reg) (reg).shift = 0
 
-#define W_FLIP(l, r)                \
-    for (uint8_t i = 0; i < 8; i++) \
-        l.arr[i] ^= r.arr[i];
+#define W_FLIP(l, r)                    \
+    for (uint8_t i = 0; i < 8; i++)     \
+        (l).arr[i] ^= (r).arr[i];
 
-#define W_MASK_BIT(wide, bit)                       \
-    wide.arr[bit >> 3] &= ~(1 << (bit & 0b111));    \
-    wide.arr[bit >> 3] |=  (1 << (bit & 0b111))
+#define W_MASK_BIT(wide, bit)                           \
+    (wide).arr[(bit) >> 3] &= ~(1 << ((bit) & 0b111)); \
+    (wide).arr[(bit) >> 3] |=  (1 << ((bit) & 0b111))
 
 #endif

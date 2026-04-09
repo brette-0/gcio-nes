@@ -6,17 +6,22 @@
 #else
 #include "../sim/sim_hal.h"
 #endif
+#include "gc.h"
 #include "types.h"
 #include "tables.h"
 
-
 extern volatile wide_t inputs;
 extern volatile uint8_t behavior;
+extern volatile shift_register legacy_sr;
+extern volatile shift_register report_sr;
+extern volatile shift_register *active_sr;
+extern volatile void (*deferred)(void);
 
 void init(void);
 void handle_interrupt(void);
 void console_read(void);
 void console_write(void);
+void input_preprocess(void);
 
 #define __OUT   (1 << 1)
 #define __D0    (1 << 2)
@@ -38,7 +43,6 @@ void console_write(void);
 #define L       10
 #define R       11
 #define C       12
-
 
 #ifndef SIMULATION
 ISR(PORTA_PORT_vect) { handle_interrupt(); }
@@ -64,12 +68,10 @@ enum EBehaviors {
     C_PREC,
 };
 
-
 #define L_STICK (vec2*)&inputs.arr[2]
 #define C_STICK (vec2*)&inputs.arr[4]
-#define D_PAD (inputs.arr[0] & 0x40)
+#define D_PAD   (inputs.arr[0] & 0x40)
 
 void PadToStick(vec2* pStick);
-
 
 #endif

@@ -1,10 +1,11 @@
-# === Firmware (ATtiny402) ===
-MCU = attiny402
+# === Firmware (ATtiny202) ===
+MCU = attiny202
 F_CPU = 20000000UL
 DFP = $(HOME)/attiny_dfp
 CC = $(HOME)/avr8-gnu-toolchain-linux_x86_64/bin/avr-gcc
-CFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -Wall -std=c11 -I src -B $(DFP)/gcc/dev/$(MCU)/ -isystem $(DFP)/include
+CFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -flto -mrelax -ffunction-sections -fdata-sections -Wall -std=c11 -I src -B $(DFP)/gcc/dev/$(MCU)/ -isystem $(DFP)/include
 ASFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Wall -I src -B $(DFP)/gcc/dev/$(MCU)/ -isystem $(DFP)/include
+LDFLAGS = -mmcu=$(MCU) -flto -mrelax -Wl,--gc-sections -B $(DFP)/gcc/dev/$(MCU)/
 
 SRC_C = $(wildcard src/*.c)
 SRC_S = $(wildcard src/*.S)
@@ -27,7 +28,7 @@ obj:
 	mkdir -p obj
 
 $(TARGET): $(OBJ)
-	$(CC) -mmcu=$(MCU) -B $(DFP)/gcc/dev/$(MCU)/ -o $@ $^
+	$(CC) $(LDFLAGS) -o $@ $^
 
 obj/%.o: src/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<

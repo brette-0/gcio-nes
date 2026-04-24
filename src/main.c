@@ -6,7 +6,6 @@
 #endif
 
 #include "types.h"
-#include "tables.h"
 #include "gc.h"
 #include "main.h"
 
@@ -26,7 +25,6 @@ volatile uint8_t  task;
 volatile uint8_t  nTask;
 
 volatile uint8_t  OUT;
-volatile void (*deferred)(void);
 
 #ifndef SIMULATION
 int main(void){
@@ -34,14 +32,7 @@ int main(void){
     sei();
 
     while (1){
-        // Job 1: service deferred NES work
-        if (deferred) {
-            void (*fn)(void) = deferred;
-            deferred = 0;
-            fn();
-        }
-
-        // Job 2: GC response arrived — process and reload buffers
+        // Job 1: GC response arrived — process and reload buffers
         if (gc_rx_done) {
             gc_rx_done = 0;
 
@@ -67,8 +58,8 @@ int main(void){
             gc_send(GC_CMD_POLL);
         }
 
-        // Job 3: nothing pending and GC idle — start polling
-        if (gc_tx_done && !gc_rx_done && !deferred) {
+        // Job 2: nothing pending and GC idle — start polling
+        if (gc_tx_done && !gc_rx_done) {
             gc_send(GC_CMD_POLL);
         }
     }
@@ -96,6 +87,7 @@ void init(void){
     gc_send(GC_CMD_POLL);
 }
 
+
 void handle_interrupt(void){
     HANDLE(__OUT) {
         OUT = PORTA.IN & __OUT;
@@ -104,14 +96,14 @@ void handle_interrupt(void){
 
     HANDLE(__CLK) {
         if (latch && task != REPORT) {
-            // console sending bits TO us — defer
-            deferred = console_read;
+            // console sending bits TO us
+            console_read();
             return;
         }
 
-        // driving D0 — must be immediate (legacy or REPORT)
+        // driving D0 — legacy or REPORT
         if (READ_SR(*active_sr)) PORTA.OUTSET = __D0;
-        else                      PORTA.OUTCLR = __D0;
+        else                     PORTA.OUTCLR = __D0;
         SHIFT(*active_sr);
     }
 }
@@ -160,14 +152,6 @@ void input_preprocess(void){
         if (!*(uint16_t*)cstick) *cstick = *lstick;
     } else if (behavior & C_TO_L){
         if (!*(uint16_t*)lstick) *lstick = *cstick;
-    }
-
-    if (behavior & L_PREC) {
-        CalculateStick(lstick);
-    }
-    if (behavior & C_PREC){
-        if (behavior & L_TO_C) *lstick = *cstick;
-        else                    CalculateStick(cstick);
     }
 
     if (behavior & D_TO_L){
@@ -220,21 +204,10 @@ void console_write(void){
 
 void PadToStick(vec2* pStick){
     uint8_t temp;
-    if (pStick == L_STICK)
-        temp = behavior & L_PREC;
-    else
-        temp = behavior & C_PREC;
-
-    if (!!temp && pStick->y)        return;
-    else if ((*(uint16_t*)pStick))  return;
 
     temp = D_PAD;
     pStick->x  = temp & 0x40 ? 0x80 : 0;
     pStick->x += temp & 0x80 ? 0x7f : 0;
     pStick->y  = temp & 0x10 ? 0x80 : 0;
     pStick->y += temp & 0x20 ? 0x7f : 0;
-
-    temp &= 1;
-    if (!temp) return;
-    CalculateStick(pStick);
 }

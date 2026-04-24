@@ -8,14 +8,12 @@
 #endif
 #include "gc.h"
 #include "types.h"
-#include "tables.h"
 
 extern volatile wide_t inputs;
 extern volatile uint8_t behavior;
 extern volatile shift_register legacy_sr;
 extern volatile shift_register report_sr;
 extern volatile shift_register *active_sr;
-extern volatile void (*deferred)(void);
 
 void init(void);
 void handle_interrupt(void);
@@ -64,8 +62,6 @@ enum EBehaviors {
     C_TO_L,
     D_TO_L,
     D_TO_C,
-    L_PREC,
-    C_PREC,
 };
 
 #define L_STICK (vec2*)&inputs.arr[2]

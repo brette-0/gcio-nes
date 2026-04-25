@@ -9,7 +9,6 @@
 #include "gc.h"
 #include "types.h"
 
-extern volatile wide_t inputs;
 extern volatile uint8_t behavior;
 extern volatile shift_register legacy_sr;
 extern volatile shift_register report_sr;
@@ -19,7 +18,8 @@ void init(void);
 void handle_interrupt(void);
 void console_read(void);
 void console_write(void);
-void input_preprocess(void);
+void input_preprocess(wide_t* dest);
+void legacy_input_preprocess(void);
 
 #define __OUT   (1 << 1)
 #define __D0    (1 << 2)
@@ -54,19 +54,22 @@ enum ETasks {
     INVERT,
     RUMBLE,
     DEZONE,
-    LSETUP
+    LSETUP,
 };
 
 enum EBehaviors {
-    L_TO_C,
-    C_TO_L,
-    D_TO_L,
-    D_TO_C,
+    L_TO_C  = 1 << 0,
+    C_TO_L  = 1 << 1,
+    D_TO_L  = 1 << 2,
+    D_TO_C  = 1 << 3,
 };
 
-#define L_STICK (vec2*)&inputs.arr[2]
-#define C_STICK (vec2*)&inputs.arr[4]
-#define D_PAD   (inputs.arr[0] & 0x40)
+enum ELBehaviors {
+    X_IS_TURBO_A    = 1 << 0,
+    Y_IS_TURBO_B    = 1 << 1,
+};
+
+#define D_PAD   (legacy_sr.content.arr[0] & 0x40)
 
 void PadToStick(vec2* pStick);
 

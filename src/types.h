@@ -3,7 +3,6 @@
 #include <stdint.h>
 
 typedef union wide_t {
-    uint64_t hunk;
     uint8_t  arr[8];
 } wide_t;
 

@@ -9,22 +9,22 @@
 #include "gc.h"
 #include "main.h"
 
-volatile wide_t inputs;
 volatile shift_register legacy_sr;
 volatile shift_register report_sr;
 volatile shift_register *active_sr = &legacy_sr;
 volatile wide_t flip;
 volatile wide_t mask;
 
-volatile uint8_t  behavior;
-volatile uint8_t  nInupts;
+volatile uint8_t behavior;
+static   uint8_t pollClock;
+static   uint8_t lSetup;
 
-volatile uint8_t  latch;
-
-volatile uint8_t  task;
-volatile uint8_t  nTask;
-
-volatile uint8_t  OUT;
+// ISR-private state — accessed only inside __vector_3
+static uint8_t  nInupts;
+static uint8_t  latch;
+static uint8_t  task;
+static uint8_t  nTask;
+static uint8_t  OUT;
 
 #ifndef SIMULATION
 int main(void){
@@ -36,21 +36,20 @@ int main(void){
         if (gc_rx_done) {
             gc_rx_done = 0;
 
-            // copy raw response into inputs
-            for (uint8_t i = 0; i < GC_RESPONSE_LEN; i++)
-                inputs.arr[i] = gc_rx_buffer[i];
-
-            // populate legacy shift register (raw mapped buttons)
+            // raw view: copy RX directly into legacy shift register
             cli();
-            legacy_sr.content = inputs;
+            for (uint8_t i = 0; i < GC_RESPONSE_LEN; i++)
+                legacy_sr.content.arr[i] = gc_rx_buffer[i];
             RESET_SR(legacy_sr);
             sei();
 
-            // preprocess for report mode
-            input_preprocess();
+            // processed view: preprocess on a stack-local, then publish
+            wide_t processed = legacy_sr.content;
+            input_preprocess(&processed);
+            legacy_input_preprocess();
 
             cli();
-            report_sr.content = inputs;
+            report_sr.content = processed;
             RESET_SR(report_sr);
             sei();
 
@@ -90,6 +89,7 @@ void init(void){
 
 void handle_interrupt(void){
     HANDLE(__OUT) {
+        pollClock = 0;
         OUT = PORTA.IN & __OUT;
         console_write();
     }
@@ -105,6 +105,7 @@ void handle_interrupt(void){
         if (READ_SR(*active_sr)) PORTA.OUTSET = __D0;
         else                     PORTA.OUTCLR = __D0;
         SHIFT(*active_sr);
+        pollClock++;
     }
 }
 
@@ -123,10 +124,11 @@ void console_read(void){
             W_MASK_BIT(flip, (OUT << nTask));
             break;
 
-        case RUMBLE:
+        case LSETUP:
+            lSetup |= (OUT << nTask);
             break;
 
-        case LSETUP:
+        case RUMBLE:
             break;
 
         default:
@@ -139,9 +141,8 @@ void console_read(void){
     active_sr = &legacy_sr;
 }
 
-void input_preprocess(void){
-    // work on a local copy
-    wide_t temp = inputs;
+void input_preprocess(wide_t* dest){
+    wide_t temp = *dest;
 
     W_FLIP(temp, flip)
 
@@ -162,8 +163,7 @@ void input_preprocess(void){
         PadToStick(cstick);
     }
 
-    // write back processed data
-    inputs = temp;
+    *dest = temp;
 }
 
 void console_write(void){
@@ -194,15 +194,54 @@ void console_write(void){
                     nTask = 64;
                     break;
 
+                case LSETUP:
+                    nTask = 2;
+                    break;
+
                 default:
-                    nTask = 0;
+                    lSetup = 0;
+                    nTask  = 0;
                     break;
             }
         }
     }
 }
 
-void PadToStick(vec2* pStick){
+static inline uint8_t angle_sign_to_pad(const int8_t angle) {
+    if      (!angle)    return 0b00;
+    else if (angle > 0) return 0b10;
+    else                return 0b01;
+}
+
+inline static void LStickToPad() {
+    const vec2 *lStick = (vec2*)&legacy_sr.content.arr[2];
+
+    legacy_sr.content.arr[0] |= angle_sign_to_pad((int8_t)lStick->x) << 6;
+    legacy_sr.content.arr[0] |= angle_sign_to_pad((int8_t)lStick->y) << 4;
+}
+
+void legacy_input_preprocess(void) {
+    LStickToPad();
+    if (
+        (lSetup & X_IS_TURBO_A)     && 
+        (legacy_sr.content.arr[0] & (1 << X))
+    ) {
+        legacy_sr.content.arr[0] |= (pollClock & 0x07)
+                            ? 0
+                            : A;
+    }
+
+    if (
+        (lSetup & Y_IS_TURBO_B)     && 
+        (legacy_sr.content.arr[0] & (1 << Y))
+    ) {
+        legacy_sr.content.arr[0] |= (pollClock & 0x07)
+                            ? 0
+                            : B;
+    }
+}
+
+void PadToStick(vec2* pStick) {
     uint8_t temp;
 
     temp = D_PAD;

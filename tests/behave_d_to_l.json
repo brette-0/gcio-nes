@@ -1,0 +1,27 @@
+[
+  "label BEHAVE: enable D_TO_L (pad copies into lStick)",
+  "# behavior is shift-register: pattern 00000100 (MSB first) -> 0b100 = 4 = D_TO_L",
+  "send_cmd behave 00000100",
+
+  "label GC Up held -> PadToStick: lStick.y=0x80, lStick.x=0",
+  "gc clear",
+  "gc up 1",
+  "poll",
+  "# After ButtonPreprocess: buttons[0] = 0x10 (Up bit), buttons[1] = 0",
+  "# After D_TO_L: PadToStick reads Up -> lStick.y = 0x80, lStick.x = 0",
+  "# No INMASK, no pack — output is the post-preprocess buffer verbatim",
+  "expect_buf output 10 00 00 80 00 00 00 00",
+
+  "label GC Right held -> lStick.x = 0x7f",
+  "gc clear",
+  "gc right 1",
+  "poll",
+  "expect_buf output 80 00 7f 00 00 00 00 00",
+
+  "label GC Down+Left -> lStick.x=0x80, lStick.y=0x7f",
+  "gc clear",
+  "gc down 1",
+  "gc left 1",
+  "poll",
+  "expect_buf output 60 00 80 7f 00 00 00 00"
+]

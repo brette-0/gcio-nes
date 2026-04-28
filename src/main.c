@@ -11,8 +11,8 @@
 
 input_t  buffers[2];
 volatile wide_t   flip;
-volatile wide_t   mask;
-input_t* targetBuffer;
+input_t* targetBuffer;   // filled by main loop from GC poll
+input_t* outputBuffer;   // shifted out by ISR — the bits not being worked on
 volatile uint8_t  shift;
 
 volatile uint8_t behavior;
@@ -20,46 +20,73 @@ static   uint8_t pollClock;
 static   uint8_t lSetup;
 
 // ISR-private state — accessed only inside __vector_3
-static uint8_t  nInupts;
 static uint8_t  latch;
 static uint8_t  task;
 static uint8_t  nTask;
+static uint8_t  nShift;
+static uint8_t  cmd;       // CLKs counted while OUT is high — selects next task
 static uint8_t  OUT;
 
+
+void main_iter(void) {
+    // Job 1: GC response arrived — process and reload buffers
+    if (gc_rx_done) {
+        gc_rx_done = 0;
+
+        // raw view: copy RX directly into legacy shift register
+        cli();
+
+        for (uint8_t i = 0; i < GC_RESPONSE_LEN; i++)
+            ((wide_t*)targetBuffer)->arr[i] = gc_rx_buffer[i];
+
+        sei();
+
+        // processed view: preprocess on a stack-local, then publish
+        InputPreprocess();
+
+        // publish: swap target/output so ISR shifts out the freshly built buffer
+        cli();
+        input_t* t   = outputBuffer;
+        outputBuffer = targetBuffer;
+        targetBuffer = t;
+        sei();
+
+        // kick off next poll immediately
+        gc_send(GC_CMD_POLL);
+    }
+
+    // Job 2: nothing pending and GC idle — start polling
+    if (gc_tx_done && !gc_rx_done) {
+        gc_send(GC_CMD_POLL);
+    }
+}
 
 #ifndef SIMULATION
 int main(void){
     init();
     sei();
+    while (1) main_iter();
+}
+#endif
 
-    while (1){
-        // Job 1: GC response arrived — process and reload buffers
-        if (gc_rx_done) {
-            gc_rx_done = 0;
-
-            // raw view: copy RX directly into legacy shift register
-            cli();
-
-            for (uint8_t i = 0; i < GC_RESPONSE_LEN; i++)
-                ((wide_t*)targetBuffer)->arr[i] = gc_rx_buffer[i];
-
-            sei();
-
-            // processed view: preprocess on a stack-local, then publish
-            InputPreprocess();
-
-            cli();
-            sei();
-
-            // kick off next poll immediately
-            gc_send(GC_CMD_POLL);
-        }
-
-        // Job 2: nothing pending and GC idle — start polling
-        if (gc_tx_done && !gc_rx_done) {
-            gc_send(GC_CMD_POLL);
-        }
+#ifdef SIMULATION
+// Test harness only — wipe all firmware-side state so tests run in isolation.
+void firmware_reset(void) {
+    for (uint8_t i = 0; i < 2; i++) {
+        for (uint8_t j = 0; j < 8; j++) ((wide_t*)&buffers[i])->arr[j] = 0;
     }
+    for (uint8_t j = 0; j < 8; j++) flip.arr[j] = 0;
+    shift     = 0;
+    behavior  = 0;
+    pollClock = 0;
+    lSetup    = 0;
+    latch     = 0;
+    task      = LEGACY;
+    nTask     = 0;
+    nShift    = 0;
+    cmd       = 0;
+    OUT       = 0;
+    init();
 }
 #endif
 
@@ -82,92 +109,95 @@ void init(void){
 
     // start first GC poll
     gc_send(GC_CMD_POLL);
-    targetBuffer = buffers;
+    targetBuffer = &buffers[0];
+    outputBuffer = &buffers[1];
 }
 
 
 void handle_interrupt(void){
     HANDLE(__OUT) {
-        pollClock = 0;
         OUT = PORTA.IN & __OUT;
+        // Only act on idle-falling: rising / mid-task edges are no-ops here.
+        if (latch | OUT) return;
+        task = cmd & 0b111;
+        cmd  = 0;     // a stray falling-without-rising must not re-enter this task
         console_write();
     }
 
     HANDLE(__CLK) {
-        if (latch && task != REPORT) {
-            // console sending bits TO us
+        if (latch) {
+            // console sending bits TO us — OUT here is the data bit value.
+            // (REPORT clears latch on entry, so it falls through to shift-out below.)
             console_read();
             return;
         }
 
-        // driving D0 — legacy or REPORT
-        if (((wide_t*)targetBuffer)->arr[shift >> 3] & (1 << (shift & 0b111)))  PORTA.OUTSET = __D0;
-        else                                                                    PORTA.OUTCLR = __D0;
-        shift++;
-        pollClock++;
+        // command-count phase: clocks while OUT is high (and we're idle) select task
+        if (OUT) { cmd++; return; }
+
+        // driving D0 — legacy or REPORT — read from the stable (not-being-worked-on) buffer
+        if (shift < nShift) {
+            if (((wide_t*)outputBuffer)->arr[shift >> 3] & (1 << (shift & 0b111)))  PORTA.OUTSET = __D0;
+            else                                                                    PORTA.OUTCLR = __D0;
+            shift++;
+        } else {
+            PORTA.OUTCLR = __D0;
+        }
     }
 }
 
 void console_read(void){
     switch (task){
         case BEHAVE:
-            behavior |= (OUT << nTask);
+            behavior = (behavior << 1) | (OUT ? 1 : 0);
             break;
 
-        case INMASK:
-            W_MASK_BIT(mask, (OUT << nTask));
-            nInupts += OUT;
+        case INVERT: {
+            const uint8_t idx = nTask - 1;
+            if (OUT) flip.arr[idx >> 3] |=  (1 << (idx & 7));
+            else     flip.arr[idx >> 3] &= ~(1 << (idx & 7));
             break;
-
-        case INVERT:
-            W_MASK_BIT(flip, (OUT << nTask));
-            break;
+        }
 
         case LSETUP:
-            lSetup |= (OUT << nTask);
-            break;
-
-        case RUMBLE:
-            break;
-
-        default:
+            lSetup = (lSetup << 1) | (OUT ? 1 : 0);
             break;
     }
 
     if (--nTask) return;
     latch = 0;
-    task  = LEGACY;
+    // task selection is owned by the cmd channel — no auto-advance here.
+    // nShift not re-locked from nInupts: see InputPreprocess where mask zeros bytes
+    // past nInupts, so over-shifting just streams zeros regardless.
 }
 
 static inline void LegacyButtonPreProcess(wide_t* raw) {
+    const uint8_t a = raw->arr[0];
+    const uint8_t b = raw->arr[1];
     targetBuffer->buttons[0] =
-        ((raw->arr[0] & IA)     ? LA         : 0) |
-        ((raw->arr[0] & IB)     ? LB         : 0) |
-        ((raw->arr[1] & IUp)    ? LUp        : 0) |
-        ((raw->arr[1] & IDown)  ? LDown      : 0) |
-        ((raw->arr[1] & ILeft)  ? LLeft      : 0) |
-        ((raw->arr[1] & IRight) ? LRight     : 0) |
-        ((raw->arr[1] & IZ)     ? LSelect    : 0) |
-        ((raw->arr[0] & IStart) ? LStart     : 0);
+          (a & 0x03)             // IA→LA, IB→LB    (bits 0,1 stay)
+        | ((a & 0x10) >> 1)        // IStart→LStart   (bit 4 → 3)
+        | ((b & 0x10) >> 2)        // IZ→LSelect      (bit 4 → 2)
+        | ((b & 0x08) << 1)        // IUp→LUp         (bit 3 → 4)
+        | ((b & 0x04) << 3)        // IDown→LDown     (bit 2 → 5)
+        | ((b & 0x03) << 6);       // ILeft→LLeft, IRight→LRight (bits 0,1 → 6,7)
 }
 static inline void ButtonPreprocess(wide_t* raw) {
-    targetBuffer->buttons[0] = 
-        ((raw->arr[0] & IB)        ? B     : 0) |
-        ((raw->arr[0] & IY)        ? Y     : 0) |
-        ((raw->arr[1] & IZ)        ? Z     : 0) |
-        ((raw->arr[0] & IStart)    ? Start : 0) |
-        ((raw->arr[1] & IUp)       ? Up    : 0) |
-        ((raw->arr[1] & IDown)     ? Down  : 0) |
-        ((raw->arr[1] & ILeft)     ? Left  : 0) |
-        ((raw->arr[1] & IRight)    ? Right : 0);    
-    ;
-
-        targetBuffer->buttons[1] = 
-            ((raw->arr[0] & IA)    ? A     : 0) |
-            ((raw->arr[0] & IX)    ? X     : 0) |
-            ((raw->arr[1] & IL)    ? L     : 0) |
-            ((raw->arr[1] & IR)    ? R     : 0) ;
-        
+    const uint8_t a = raw->arr[0];
+    const uint8_t b = raw->arr[1];
+    targetBuffer->buttons[0] =
+          ((a & 0x02) >> 1)        // IB→B            (bit 1 → 0)
+        | ((a & 0x08) >> 2)        // IY→Y            (bit 3 → 1)
+        | ((b & 0x10) >> 2)        // IZ→Z            (bit 4 → 2)
+        | ((a & 0x10) >> 1)        // IStart→Start    (bit 4 → 3)
+        | ((b & 0x08) << 1)        // IUp→Up          (bit 3 → 4)
+        | ((b & 0x04) << 3)        // IDown→Down      (bit 2 → 5)
+        | ((b & 0x03) << 6);       // ILeft→Left, IRight→Right
+    targetBuffer->buttons[1] =
+          (a & 0x01)               // IA→A            (bit 0 stays)
+        | ((a & 0x04) >> 1)        // IX→X            (bit 2 → 1)
+        | ((b & 0x40) >> 4)        // IL→L            (bit 6 → 2)
+        | ((b & 0x20) >> 2);       // IR→R            (bit 5 → 3)
 }
 
 static inline uint8_t angle_sign_to_pad(const int8_t angle) {
@@ -181,16 +211,29 @@ inline static void LStickToPad(wide_t* raw) {
     raw->arr[0] |= angle_sign_to_pad((int8_t)targetBuffer->lStick.y) << 4;
 }
 
+static inline void FlipBuffer(wide_t* raw) {
+    for (uint8_t i = 0; i < 8; i++) raw->arr[i] ^= flip.arr[i];
+}
+
+static inline void LegacyProcessTurboButtons(uint8_t gc0) {
+    if ((lSetup & X_IS_TURBO_A) && (gc0 & IX)) {
+        targetBuffer->buttons[0] |= (pollClock & 0x07) ? 0 : LA;
+    }
+
+    if ((lSetup & Y_IS_TURBO_B) && (gc0 & IY)) {
+        targetBuffer->buttons[0] |= (pollClock & 0x07) ? 0 : LB;
+    }
+}
+
 void InputPreprocess(){
     wide_t* raw = (wide_t*)targetBuffer;
     if (task == LEGACY) {
+        const uint8_t gc0 = raw->arr[0];   // snapshot before legacy encode stomps it
         LegacyButtonPreProcess(raw);
+        LegacyProcessTurboButtons(gc0);
         LStickToPad(raw);
     } else {
         ButtonPreprocess(raw);
-
-        for (uint8_t i = 0; i < 8; i++)
-            raw->arr[i] ^= flip.arr[i];
 
         if (behavior & L_TO_C) {
             if (!*(uint16_t*)&targetBuffer->cStick) targetBuffer->cStick = targetBuffer->lStick;
@@ -205,32 +248,42 @@ void InputPreprocess(){
         if (behavior & D_TO_C){
             PadToStick(&targetBuffer->cStick);
         }
+
+        // typical-usage region zeroers — replace what arbitrary INMASK used to do
+        if (behavior & UnifiedTrigger) {
+            if (raw->arr[7] > raw->arr[6]) raw->arr[6] = raw->arr[7];
+            raw->arr[7] = 0;
+        }
+        if (behavior & NoTriggers) { raw->arr[6] = 0; raw->arr[7] = 0; }
+        if (behavior & NoCStick)   { raw->arr[4] = 0; raw->arr[5] = 0; }
+        if (behavior & NoLStick)   { raw->arr[2] = 0; raw->arr[3] = 0; }
+
+        // wire-level inversion (INVERT) applied last
+        FlipBuffer(raw);
     }
 }
 
 void console_write(void){
     if (!OUT){
         if (task == LEGACY) {
-            shift = 0;
+            shift  = 0;
+            nShift = 8;
+            pollClock++;       // one tick per controller read
         } else {
             latch = 1;
             switch (task) {
                 case REPORT:
-                    shift = 0;
-                    nTask = nInupts;
+                    shift  = 0;
+                    nShift = 64;   // full input_t — refine when REPORT subset selection lands
+                    latch  = 0;    // REPORT is a read phase
                     break;
 
                 case BEHAVE:
                     behavior = 0;
-                    nTask = 8;
+                    nTask    = 8;
                     break;
 
-                case INMASK:
-                    nInupts = 0;
-                    goto wide;
-
                 case INVERT:
-                wide:
                     nTask = 64;
                     break;
 
@@ -239,9 +292,7 @@ void console_write(void){
                     break;
 
                 default:
-                    lSetup = 0;
-                    nTask  = 0;
-                    break;
+                    nTask = 0;
             }
         }
     }
@@ -251,29 +302,9 @@ void PadToStick(vec2* pStick) {
     const uint8_t temp = targetBuffer->buttons[0] & (
         Up | Down | Left | Right
     );
+    
     pStick->x  = temp & 0x40 ? 0x80 : 0;
     pStick->x += temp & 0x80 ? 0x7f : 0;
     pStick->y  = temp & 0x10 ? 0x80 : 0;
     pStick->y += temp & 0x20 ? 0x7f : 0;
-}
-
-
-void LegacyProcessTurboButtons(wide_t* raw) {
-    if (
-        (lSetup & X_IS_TURBO_A)     && 
-        (raw->arr[0] & IX)
-    ) {
-        targetBuffer->buttons[0] |= (pollClock & 0x07)
-                            ? 0
-                            : LA;
-    }
-
-    if (
-        (lSetup & Y_IS_TURBO_B)     && 
-        (raw->arr[0] & IY)
-    ) {
-        targetBuffer->buttons[0] |= (pollClock & 0x07)
-                            ? 0
-                            : LB;
-    }
 }

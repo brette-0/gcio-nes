@@ -20,8 +20,5 @@ typedef struct input_t {
 } input_t;
 
 
-#define W_MASK_BIT(wide, bit)                           \
-    (wide).arr[(bit) >> 3] &= ~(1 << ((bit) & 0b111)); \
-    (wide).arr[(bit) >> 3] |=  (1 << ((bit) & 0b111))
 
 #endif

@@ -10,11 +10,14 @@
 #include "types.h"
 
 void init(void);
+void main_iter(void);
+#ifdef SIMULATION
+void firmware_reset(void);
+#endif
 void handle_interrupt(void);
 void console_read(void);
 void console_write(void);
 void InputPreprocess();
-void LegacyProcessTurboButtons(wide_t* raw);;
 
 #define __OUT   (1 << 1)
 #define __D0    (1 << 2)
@@ -43,13 +46,13 @@ enum EInButtons {
     /* origin has been sent to console 0 = yes */
     /* error (latched) */
     /* error (ignore on last transfer) */
-    ILeft   = 1 << 8,
-    IRight  = 1 << 9,
-    IDown   = 1 << 10,
-    IUp     = 1 << 11,
-    IZ      = 1 << 12,
-    IR      = 1 << 13,
-    IL      = 1 << 14,
+    ILeft   = 1 << 0,
+    IRight  = 1 << 1,
+    IDown   = 1 << 2,
+    IUp     = 1 << 3,
+    IZ      = 1 << 4,
+    IR      = 1 << 5,
+    IL      = 1 << 6,
     /* use the controller origin 1 = yes, not confirmed */
 };
 
@@ -76,7 +79,6 @@ enum ETasks {
     LEGACY,
     REPORT,
     BEHAVE,
-    INMASK,
     INVERT,
     RUMBLE,
     DEZONE,
@@ -84,10 +86,14 @@ enum ETasks {
 };
 
 enum EBehaviors {
-    L_TO_C  = 1 << 0,
-    C_TO_L  = 1 << 1,
-    D_TO_L  = 1 << 2,
-    D_TO_C  = 1 << 3,
+    L_TO_C         = 1 << 0,
+    C_TO_L         = 1 << 1,
+    D_TO_L         = 1 << 2,
+    D_TO_C         = 1 << 3,
+    UnifiedTrigger = 1 << 4,   // L/R analog triggers collapsed into max in lTrigger byte
+    NoTriggers     = 1 << 5,   // analog trigger bytes zeroed (digital L/R bits remain)
+    NoCStick       = 1 << 6,   // cStick bytes zeroed
+    NoLStick       = 1 << 7,   // lStick bytes zeroed
 };
 
 enum ELBehaviors {

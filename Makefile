@@ -17,7 +17,7 @@ SIM_CXX = g++
 SIM_CXXFLAGS = -Wall -std=c++17 -g -I src -I sim -DSIMULATION
 SIM_CFLAGS = -Wall -std=c11 -g -I src -I sim -DSIMULATION
 SIM_SRC_CPP = $(wildcard sim/*.cpp)
-SIM_SHARED = src/tables.c src/main.c src/gc.c
+SIM_SHARED = src/main.c src/gc.c
 SIM_OBJ = $(patsubst sim/%.cpp,obj/sim_%.o,$(SIM_SRC_CPP)) $(patsubst src/%.c,obj/sim_shared_%.o,$(SIM_SHARED))
 SIM_TARGET = gcio-sim
 

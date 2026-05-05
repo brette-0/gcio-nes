@@ -21,7 +21,9 @@ extern "C" {
     extern input_t* targetBuffer;
     extern input_t* outputBuffer;
     extern volatile wide_t flip;
+    extern volatile wide_t origin;
     extern volatile uint8_t behavior;
+    extern volatile uint8_t rumble;
     void firmware_reset(void);
 }
 
@@ -34,6 +36,8 @@ enum Op : uint8_t {
     OP_EXP_D0   = 0x05,   // 1 byte: 0|1 — assert D0 == value
     OP_LABEL    = 0x06,   // 1 byte len, len bytes utf-8
     OP_EXP_BUF  = 0x07,   // 1 byte which (0=target,1=output), 8 bytes expected
+    OP_ORIGIN   = 0x08,   // 8 bytes: directly set the stick-origin storage
+    OP_EXP_RUM  = 0x09,   // 1 byte: assert rumble flag matches
     OP_END      = 0xFF,
 };
 
@@ -157,6 +161,20 @@ static bool run(const std::vector<uint8_t>& bc) {
                 if (i + len > bc.size()) { std::cerr << "OP_LABEL str truncated\n"; return false; }
                 g_label.assign(reinterpret_cast<const char*>(&bc[i]), len);
                 i += len;
+                break;
+            }
+            case OP_ORIGIN: {
+                if (i + 8 > bc.size()) { std::cerr << "OP_ORIGIN truncated\n"; return false; }
+                for (int j = 0; j < 8; j++) origin.arr[j] = bc[i++];
+                break;
+            }
+            case OP_EXP_RUM: {
+                if (i >= bc.size()) { std::cerr << "OP_EXP_RUM truncated\n"; return false; }
+                uint8_t want = bc[i++];
+                uint8_t got  = rumble ? 1 : 0;
+                std::ostringstream d;
+                d << "want=" << (int)want << " got=" << (int)got;
+                g_checks.push_back({g_label, "RUM", got == want, d.str()});
                 break;
             }
             case OP_EXP_BUF: {

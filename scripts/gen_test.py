@@ -50,6 +50,8 @@ OP_CLK     = 0x04
 OP_EXP_D0  = 0x05
 OP_LABEL   = 0x06
 OP_EXP_BUF = 0x07
+OP_ORIGIN  = 0x08
+OP_EXP_RUM = 0x09
 OP_END     = 0xFF
 
 # Bit positions WITHIN their byte (matches src/main.h EInButtons after the
@@ -122,6 +124,12 @@ class Compiler:
             v = int(args[0])
             if v: self.gc[idx] |=  (1 << bit)
             else: self.gc[idx] &= ~(1 << bit) & 0xFF
+        elif field == 'bit':
+            # gc bit <byte_idx> <bit_idx> <0|1> — direct status-bit poke
+            if len(args) != 3: raise ValueError("gc bit: byte_idx bit_idx 0|1")
+            bidx = int(args[0]); bit = int(args[1]); v = int(args[2])
+            if v: self.gc[bidx] |=  (1 << bit)
+            else: self.gc[bidx] &= ~(1 << bit) & 0xFF
         elif field == 'lstick':
             if len(args) != 2: raise ValueError("gc lstick: expected x y")
             self.gc[2] = int(args[0]) & 0xFF
@@ -169,6 +177,11 @@ class Compiler:
             self.emit_gc()
             self.emit(OP_POLL)
 
+        elif op == 'origin':
+            # commit the staged GC state as the stored stick origin
+            self.emit(OP_ORIGIN)
+            self.bc.extend(self.gc)
+
         elif op == 'out':
             if len(args) != 1: raise ValueError("out: 0|1")
             self.emit(OP_OUT, int(args[0]) & 1)
@@ -185,6 +198,10 @@ class Compiler:
         elif op == 'expect_buf':
             if len(args) < 2: raise ValueError("expect_buf: target|output b0 b1 ...")
             self.emit_buf_check(args[0], args[1:9])
+
+        elif op == 'expect_rumble':
+            if len(args) != 1: raise ValueError("expect_rumble: 0|1")
+            self.emit(OP_EXP_RUM, int(args[0]) & 1)
 
         elif op == 'cmd':
             # idle low, latch high, N command-clocks during latch high, latch low.

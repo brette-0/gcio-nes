@@ -1,0 +1,25 @@
+[
+  "label rumble starts off after reset",
+  "expect_rumble 0",
+
+  "label send RUMBLE task with bit 1 -> rumble flag set",
+  "send_cmd rumble 1",
+  "expect_rumble 1",
+
+  "label send RUMBLE task with bit 0 -> rumble flag cleared",
+  "send_cmd rumble 0",
+  "expect_rumble 0",
+
+  "label rumble persists across polls until cleared",
+  "send_cmd rumble 1",
+  "expect_rumble 1",
+  "gc clear",
+  "poll",
+  "expect_rumble 1",
+  "poll",
+  "expect_rumble 1",
+
+  "label and clears cleanly",
+  "send_cmd rumble 0",
+  "expect_rumble 0"
+]

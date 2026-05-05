@@ -81,7 +81,6 @@ enum ETasks {
     BEHAVE,
     INVERT,
     RUMBLE,
-    DEZONE,
     LSETUP,
 };
 

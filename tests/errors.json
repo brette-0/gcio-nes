@@ -1,0 +1,50 @@
+[
+  "label set initial origin and switch out of LEGACY",
+  "gc clear",
+  "gc lstick 100 100",
+  "origin",
+  "cmd report",
+
+  "label first good poll: A held, lstick at rest -> output[1]=A bit, sticks=0",
+  "gc clear",
+  "gc lstick 100 100",
+  "gc a 1",
+  "poll",
+  "expect_buf output 00 01 00 00 00 00 00 00",
+
+  "label second poll with err bit (byte0 bit7) set: output unchanged from last good frame",
+  "gc clear",
+  "gc lstick 50 50",
+  "gc b 1",
+  "gc bit 0 7 1",
+  "poll",
+  "expect_buf output 00 01 00 00 00 00 00 00",
+
+  "label third good poll (no err): now we see the new state",
+  "gc clear",
+  "gc lstick 100 100",
+  "gc b 1",
+  "poll",
+  "expect_buf output 01 00 00 00 00 00 00 00",
+
+  "label trigger origin re-fetch: poll with byte0 bit5 set, new rest values",
+  "gc clear",
+  "gc lstick 80 80",
+  "gc bit 0 5 1",
+  "poll",
+  "label   output unchanged (skip-publish was implicit since we sent ORIGIN instead of next POLL)",
+  "expect_buf output 01 00 00 00 00 00 00 00",
+
+  "label next poll's response is consumed as ORIGIN (gc_active_cmd is ORIGIN now)",
+  "gc clear",
+  "gc lstick 80 80",
+  "poll",
+  "label   output still unchanged — that response went into `origin` storage, not the buffer",
+  "expect_buf output 01 00 00 00 00 00 00 00",
+
+  "label poll at new rest value -> arr[2..3] = 0 (origin correction working with new origin)",
+  "gc clear",
+  "gc lstick 80 80",
+  "poll",
+  "expect_buf output 00 00 00 00 00 00 00 00"
+]
